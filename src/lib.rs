@@ -17,5 +17,4 @@
 */
 
 mod utils;
-
 pub mod mdadm;
