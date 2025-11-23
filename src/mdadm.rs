@@ -18,11 +18,10 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use std::process::Command;
-use crate::*;
+use std::{io, process::Command};
+use crate::{check_devs, utils::{check_dev,root_check,run_cmd}};
 
 use regex::Regex;
-
 
 /// Represents a software RAID device (array)
 #[derive(Debug)]
@@ -84,115 +83,123 @@ pub fn create_raid_array(
     raid_dev: &str,
     partitions: &[&str],
     raid_level:usize
-) -> Result<(),String> {
-        root_check!();
+) -> io::Result<()> {
+    root_check()?;
+    
+    let mut cmd = Command::new("mdadm");
 
-        let mut cmd = Command::new("mdadm");
+    if !([0,1,5,6].contains(&raid_level)) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("Incorrect raid level:{}",raid_level)));
+    }
+    
+    if raid_dev.len() > 32 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "md device name too long (32 max)"));
+    }
+    
+    check_dev(raid_dev)?;
+    check_devs!(partitions);
+    
+    cmd.arg("--create");
+    
+    let strip = raid_dev
+        .trim_start_matches("/dev/")
+        .trim_start_matches("md")
+        .trim_start_matches("/");
+    
+    if strip.parse::<usize>().is_ok() {
+        cmd.arg(format!("/dev/md{}",strip));
+    } else {
+        cmd.arg(format!("/dev/md/{}",strip));
+    }
 
-        if !([0,1,5,6].contains(&raid_level)) {
-            return Err(format!("Incorrect raid level:{}",raid_level));
-        }
-        
-        if raid_dev.len() > 32 {
-            return Err(String::from("md device name too long (32 max)"));
-        }
-        
-        check_devs!(partitions);
-        check_dev!(raid_dev);
-        
-        cmd.arg("--create");
-        
-        let strip = raid_dev
-            .trim_start_matches("/dev/")
-            .trim_start_matches("md")
-            .trim_start_matches("/");
-        
-        if strip.parse::<usize>().is_ok() {
-            cmd.arg(format!("/dev/md{}",strip));
-        } else {
-            cmd.arg(format!("/dev/md/{}",strip));
-        }
-
-        cmd.args(["--metadata","1.2"]);
-        cmd.arg(format!("--level={}",&raid_level.to_string()));
-        cmd.args(["--raid-devices",&partitions.len().to_string()]);
-        cmd.arg("--bitmap=internal");
-        cmd.args(partitions);
-        
-        run_cmd!(cmd)
+    cmd.args(["--metadata","1.2"]);
+    cmd.arg(format!("--level={}",&raid_level.to_string()));
+    cmd.args(["--raid-devices",&partitions.len().to_string()]);
+    cmd.arg("--bitmap=internal");
+    cmd.args(partitions);
+    
+    run_cmd(cmd)
 }
+
 /// Mark partitions as faulty, return error as a string if failed.
 pub fn fail_from_raid_array(
     raid_dev: &str,
     partitions: &[&str],
-) -> Result<(),String> {
-    root_check!();
+) -> io::Result<()> {
+    root_check()?;
+
     let mut cmd = Command::new("mdadm");
 
-    check_dev!(raid_dev);
+    check_dev(raid_dev)?;
     check_devs!(partitions);
 
     cmd.arg(raid_dev);
     cmd.arg("--fail");
     cmd.args(partitions);
     
-    run_cmd!(cmd)
+    run_cmd(cmd)
 }
+
 /// Remove partition from array, return error as a string if failed.
 pub fn remove_from_raid_array(
     raid_dev: &str,
     partitions: &[&str],
-) -> Result<(),String> {
-    root_check!();
+) -> io::Result<()> {
+    root_check()?;
 
     let mut cmd = Command::new("mdadm");
     
-    check_dev!(raid_dev);
+    check_dev(raid_dev)?;
     check_devs!(partitions);
     
     cmd.arg(raid_dev);
     cmd.arg("--remove");
     cmd.args(partitions);
 
-    run_cmd!(cmd)
+    run_cmd(cmd)
 }
+
 pub fn grow_raid_array(
     raid_dev: &str,
     raid_level:usize
-) -> Result<(),String> {
-    root_check!();
+) -> io::Result<()> {
+    root_check()?;
+
     let mut cmd = Command::new("mdadm");
     
-    check_dev!(raid_dev);
+    check_dev(raid_dev)?;
     
     cmd.arg("--grow");
     cmd.arg(raid_dev);
     cmd.arg(format!("--level={}",&raid_level.to_string()));
 
-    run_cmd!(cmd)
+    run_cmd(cmd)
 }
+
 /// Add partitions to existing array, return error as a string if failed.
 pub fn add_to_raid_array(
     raid_dev: &str,
     partitions: &[&str],
-) -> Result<(),String> {
-    root_check!();
+) -> io::Result<()> {
+    root_check()?;
+
     let mut cmd = Command::new("mdadm");
     
-    check_dev!(raid_dev);
+    check_dev(raid_dev)?;
     check_devs!(partitions);
     
     cmd.arg(raid_dev);
     cmd.arg("--add");
     cmd.args(partitions);
 
-    run_cmd!(cmd)
+    run_cmd(cmd)
 }
+
 /// Returns true if the partition is in a raid array
 pub fn is_part_in_raid_array(
     dev: &str
-) -> Result<bool,String> {
-    root_check!();
+) -> io::Result<bool> {
+    root_check()?;
 
     let cmd = Command::new("mdadm")
         .arg("--detail")
@@ -201,7 +208,7 @@ pub fn is_part_in_raid_array(
         .unwrap();
 
     if cmd.stderr != b"" {
-        return Err(String::from_utf8(cmd.stderr).unwrap())
+        return Err(io::Error::new(io::ErrorKind::Other, format!("mdadm detail failed with the following\n{}",String::from_utf8(cmd.stderr).unwrap())));
     }
 
     let stdout = String::from_utf8(cmd.stdout).unwrap();
@@ -212,11 +219,12 @@ pub fn is_part_in_raid_array(
     // kind of a hack but should work perfectly
     Ok(stdout.contains("MD_UUID")) 
 }
+
 /// Get details of RAID array, return error as a string if failed.
 pub fn get_detail(
     raid_dev: &str
-) -> Result<RaidDev, String> {
-    root_check!();
+) -> io::Result<RaidDev> {
+    root_check()?;
 
     let cmd = Command::new("mdadm")
         .arg("--detail")
@@ -225,7 +233,7 @@ pub fn get_detail(
         .unwrap();
 
     if cmd.stderr != b"" {
-        return Err(String::from_utf8(cmd.stderr).unwrap())
+        return Err(io::Error::new(io::ErrorKind::Other, format!("mdadm detail failed with the following\n{}",String::from_utf8(cmd.stderr).unwrap())));
     }
 
     let stdout = String::from_utf8(cmd.stdout).unwrap();

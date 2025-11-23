@@ -16,11 +16,10 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use std::{
+    fmt::Display, io, process::Command
+};
 use nix::unistd::{getuid,ROOT};
-
-pub fn is_root() -> bool {
-    return getuid() == ROOT;
-}
 
 /// Macro to run command and return result.
 #[macro_export] 
@@ -37,14 +36,11 @@ macro_rules! run_cmd {
     };
 }
 
-/// Macro to check if device name is correct.
-#[macro_export]  
-macro_rules! check_dev {
-    ($dev:expr) => {
-        if !$dev.starts_with("/dev/") {
-            return Err(format!("Incorrect device path: {}",$dev))
-        }
+pub fn check_dev<S: AsRef<str> + Display>(dev: S) -> io::Result<()> {
+    if !dev.as_ref().starts_with("/dev/") {
+        return Err(io::Error::new(io::ErrorKind::InvalidFilename, format!("Incorrect device path: {}",dev)))
     }
+    Ok(())
 }
 
 /// Macro to check if multiple device names are correct.
@@ -52,17 +48,33 @@ macro_rules! check_dev {
 macro_rules! check_devs {
     ($devs:expr) => {
         for dev in $devs.iter() {
-            check_dev!(dev);
+            check_dev(dev)?;
         }
     }
 }
 
-/// Returns Result::Err with String "Action requires root." if not running as root.
-#[macro_export] 
-macro_rules! root_check {
-    () => {
-        if !is_root() {
-            return Err("Action requires root.".to_string())
+fn is_root() -> bool {
+    return getuid() == ROOT;
+}
+
+pub fn run_cmd(mut command: Command) -> io::Result<()> {
+    let output = command.output().map_err(|e| e.to_string());
+    if let Ok(output_ok) = output {
+        if output_ok.status.success() {
+            Ok(())
+        } else {
+            return Err(io::Error::new(io::ErrorKind::Other, format!("Command failed with exit code: {:?}", output_ok.status.code())))
         }
-    };
+    } else {
+        return Err(io::Error::new(io::ErrorKind::Other, "Command failed with Err."))
+    }
+}
+
+/// Returns io::Error with String "Action requires root privileges." if not running as root.
+pub fn root_check() -> io::Result<()> {
+    if !is_root() {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Action requires root privileges."))
+    }
+    
+    Ok(())
 }

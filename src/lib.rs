@@ -17,5 +17,5 @@
 */
 
 mod utils;
-use utils::*;
+
 pub mod mdadm;
