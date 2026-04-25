@@ -184,11 +184,33 @@ pub fn add_to_raid_array(
     root_check()?;
 
     let mut cmd = Command::new("mdadm");
-    
+
     check_dev(raid_dev)?;
     check_devs!(partitions);
-    
+
     cmd.arg(raid_dev);
+    cmd.arg("--add");
+    cmd.args(partitions);
+
+    run_cmd(cmd)
+}
+
+/// Grow array to `new_raid_devices` members and add `partitions`, return error as a string if failed.
+pub fn grow_add_to_raid_array(
+    raid_dev: &str,
+    new_raid_devices: usize,
+    partitions: &[&str],
+) -> io::Result<()> {
+    root_check()?;
+
+    let mut cmd = Command::new("mdadm");
+
+    check_dev(raid_dev)?;
+    check_devs!(partitions);
+
+    cmd.arg("--grow");
+    cmd.arg(raid_dev);
+    cmd.arg(format!("--raid-devices={new_raid_devices}"));
     cmd.arg("--add");
     cmd.args(partitions);
 
