@@ -18,3 +18,4 @@
 
 mod utils;
 pub mod mdadm;
+pub mod mdstat;

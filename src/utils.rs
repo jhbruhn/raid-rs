@@ -31,37 +31,6 @@ pub fn log_cmd(cmd: &std::process::Command) {
     println!("+ {} {}", prog, args.join(" "));
 }
 
-#[macro_export]
-/// Macro to run command and return result. Logs the invocation to stderr.
-macro_rules! run_cmd {
-    ($cmd:expr) => {
-        {
-            let c = $cmd;
-            $crate::log_cmd(c);
-            match c.output() {
-                Ok(output) => {
-                    if output.status.success() {
-                        return Ok(());
-                    } else {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        let code = output
-                            .status
-                            .code()
-                            .map(|c| c.to_string())
-                            .unwrap_or_else(|| "signal".to_string());
-                        return Err(format!(
-                            "command exited with status {}: {}",
-                            code,
-                            stderr.trim()
-                        ));
-                    }
-                }
-                Err(err) => return Err(err.to_string()),
-            }
-        }
-    };
-}
-
 pub fn check_dev<S: AsRef<str> + Display>(dev: S) -> io::Result<()> {
     if !dev.as_ref().starts_with("/dev/") {
         return Err(io::Error::new(io::ErrorKind::InvalidFilename, format!("Incorrect device path: {}",dev)))
@@ -84,6 +53,7 @@ fn is_root() -> bool {
 }
 
 pub fn run_cmd(mut command: Command) -> io::Result<()> {
+    log_cmd(&command);
     let output = command.output().map_err(|e| e.to_string());
     if let Ok(output_ok) = output {
         if output_ok.status.success() {
