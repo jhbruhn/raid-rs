@@ -195,6 +195,30 @@ pub fn add_to_raid_array(
     run_cmd(cmd)
 }
 
+/// In-place 1-for-1 swap: rebuild data from `old_part` onto `new_part`,
+/// then auto-remove `old_part` once the rebuild completes.
+pub fn replace_in_raid_array(
+    raid_dev: &str,
+    old_part: &str,
+    new_part: &str,
+) -> io::Result<()> {
+    root_check()?;
+
+    let mut cmd = Command::new("mdadm");
+
+    check_dev(raid_dev)?;
+    check_dev(old_part)?;
+    check_dev(new_part)?;
+
+    cmd.arg(raid_dev);
+    cmd.arg("--replace");
+    cmd.arg(old_part);
+    cmd.arg("--with");
+    cmd.arg(new_part);
+
+    run_cmd(cmd)
+}
+
 /// Grow array to `new_raid_devices` members and add `partitions`, return error as a string if failed.
 pub fn grow_add_to_raid_array(
     raid_dev: &str,
