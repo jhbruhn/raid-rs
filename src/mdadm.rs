@@ -217,6 +217,39 @@ pub fn grow_add_to_raid_array(
     run_cmd(cmd)
 }
 
+/// Resolve a current `/dev/mdN` device path for the array with the given
+/// superblock UUID, by scanning `/sys/block/md*/md/uuid`. Returns `None`
+/// when no assembled md matches. UUIDs are compared after stripping
+/// non-hex chars and lowercasing, so colon- and dash-formatted strings
+/// from `mdadm --detail` and sysfs both work.
+pub fn resolve_md_by_uuid(uuid: &str) -> io::Result<Option<String>> {
+    let target = normalize_md_uuid(uuid);
+    if target.is_empty() {
+        return Ok(None);
+    }
+    for entry in std::fs::read_dir("/sys/block")? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with("md") {
+            continue;
+        }
+        let uuid_path = entry.path().join("md/uuid");
+        let Ok(content) = std::fs::read_to_string(&uuid_path) else { continue };
+        if normalize_md_uuid(&content) == target {
+            return Ok(Some(format!("/dev/{name}")));
+        }
+    }
+    Ok(None)
+}
+
+fn normalize_md_uuid(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
 /// Returns true if the partition is in a raid array
 pub fn is_part_in_raid_array(
     dev: &str
