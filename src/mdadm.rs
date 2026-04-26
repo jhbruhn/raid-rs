@@ -219,10 +219,14 @@ pub fn replace_in_raid_array(
     run_cmd(cmd)
 }
 
-/// Grow array to `new_raid_devices` members and add `partitions`, return error as a string if failed.
+/// Grow array to `new_raid_devices` members and add `partitions`. If
+/// `new_raid_level` is set, also pass `--level=N` to change the array's
+/// level in the same mdadm call (used to migrate RAID1→RAID5 when a
+/// 2-member mirror gains a 3rd member).
 pub fn grow_add_to_raid_array(
     raid_dev: &str,
     new_raid_devices: usize,
+    new_raid_level: Option<usize>,
     partitions: &[&str],
 ) -> io::Result<()> {
     root_check()?;
@@ -234,6 +238,9 @@ pub fn grow_add_to_raid_array(
 
     cmd.arg("--grow");
     cmd.arg(raid_dev);
+    if let Some(level) = new_raid_level {
+        cmd.arg(format!("--level={level}"));
+    }
     cmd.arg(format!("--raid-devices={new_raid_devices}"));
     cmd.arg("--add");
     cmd.args(partitions);
