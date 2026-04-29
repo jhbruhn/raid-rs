@@ -21,8 +21,15 @@ use std::{
 };
 use nix::unistd::{getuid,ROOT};
 
-/// Log a command invocation in a shell-paste-friendly form.
+/// Log a command invocation in a shell-paste-friendly form. Suppressed
+/// when the host wires `RAID_RS_QUIET=1` into the environment — a
+/// cooperative opt-out so a host CLI that already provides its own
+/// structured progress output can hide the raw command stream behind
+/// its verbose flag.
 pub fn log_cmd(cmd: &std::process::Command) {
+    if std::env::var_os("RAID_RS_QUIET").is_some() {
+        return;
+    }
     let prog = cmd.get_program().to_string_lossy();
     let args: Vec<String> = cmd
         .get_args()
